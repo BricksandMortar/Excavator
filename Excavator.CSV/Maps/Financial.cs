@@ -53,18 +53,19 @@ namespace Excavator.CSV
                     }
 
                     string batchDateKey = row[BatchDate];
-                    DateTime? batchDate = batchDateKey.AsType<DateTime?>();
-                    if ( batchDate != null )
+                    DateTime batchDate;
+                    bool successfulParse = DateTime.TryParse( batchDateKey, out batchDate );
+                    if ( successfulParse )
                     {
                         batch.BatchStartDateTime = batchDate;
                         batch.BatchEndDateTime = batchDate;
                     }
 
                     string amountKey = row[BatchAmount];
-                    decimal? amount = amountKey.AsType<decimal?>();
+                    var amount = amountKey.AsType<decimal?>();
                     if ( amount != null )
                     {
-                        batch.ControlAmount = amount.HasValue ? amount.Value : new decimal();
+                        batch.ControlAmount = (decimal) amount;
                     }
 
                     newBatches.Add( batch );
@@ -76,7 +77,12 @@ namespace Excavator.CSV
                     else if ( completed % ReportingNumber < 1 )
                     {
                         SaveFinancialBatches( newBatches );
-                        newBatches.ForEach( b => ImportedBatches.Add( ( int )b.ForeignId, ( int? )b.Id ) );
+                        newBatches.ForEach( b => {
+                            if (b.ForeignId != null)
+                            {
+                                ImportedBatches.Add( b.ForeignId.Value, b.Id );
+                            }
+                        });
                         newBatches.Clear();
                         ReportPartialProgress();
                     }
@@ -89,7 +95,7 @@ namespace Excavator.CSV
                 var defaultBatch = new FinancialBatch();
                 defaultBatch.CreatedDateTime = ImportDateTime;
                 defaultBatch.CreatedByPersonAliasId = ImportPersonAliasId;
-                defaultBatch.Status = Rock.Model.BatchStatus.Closed;
+                defaultBatch.Status = BatchStatus.Closed;
                 defaultBatch.Name = string.Format( "Default Batch (Imported {0})", ImportDateTime );
                 defaultBatch.ControlAmount = 0.0m;
                 defaultBatch.ForeignKey = "0";
@@ -101,7 +107,13 @@ namespace Excavator.CSV
             if ( newBatches.Any() )
             {
                 SaveFinancialBatches( newBatches );
-                newBatches.ForEach( b => ImportedBatches.Add( ( int )b.ForeignId, ( int? )b.Id ) );
+                newBatches.ForEach( b => {
+                    if (b.ForeignId != null && !ImportedBatches.ContainsKey(b.ForeignId.Value))
+                    {
+
+                        ImportedBatches.Add( b.ForeignId.Value, b.Id );
+                    }
+                });
             }
 
             ReportProgress( 100, string.Format( "Finished batch import: {0:N0} batches imported.", completed ) );
@@ -158,6 +170,7 @@ namespace Excavator.CSV
 
             var refundReasons = DefinedTypeCache.Read( new Guid( Rock.SystemGuid.DefinedType.FINANCIAL_TRANSACTION_REFUND_REASON ), lookupContext ).DefinedValues;
 
+            var personService = new PersonService(lookupContext);
             var accountList = new FinancialAccountService( lookupContext ).Queryable().AsNoTracking().ToList();
 
             int? defaultBatchId = null;
@@ -196,7 +209,17 @@ namespace Excavator.CSV
 
                     int? giverAliasId = null;
                     var personKeys = GetPersonKeys( individualId );
-                    if ( personKeys != null && personKeys.PersonAliasId > 0 )
+                    if (personKeys == null)
+                    {
+                        giverAliasId = personService.Queryable().FirstOrDefault(p => p.ForeignKey == individualIdKey).PrimaryAliasId;
+                    }
+                    else if ( personKeys != null && personKeys.PersonAliasId > 0 )
+                    {
+                        giverAliasId = personKeys.PersonAliasId;
+                    }
+
+
+                    if ( giverAliasId.HasValue )
                     {
                         giverAliasId = personKeys.PersonAliasId;
                         transaction.CreatedByPersonAliasId = giverAliasId;
@@ -210,7 +233,7 @@ namespace Excavator.CSV
                         transaction.ProcessedByPersonAliasId = giverAliasId;
                     }
 
-                    string summary = row[Memo] as string;
+                    string summary = row[Memo];
                     if ( !String.IsNullOrWhiteSpace( summary ) )
                     {
                         transaction.Summary = summary;
@@ -229,8 +252,9 @@ namespace Excavator.CSV
                     }
 
                     string receivedDateKey = row[ReceivedDate];
-                    DateTime? receivedDate = receivedDateKey.AsType<DateTime?>();
-                    if ( receivedDate != null )
+                    DateTime receivedDate;
+                    bool successfulParse = DateTime.TryParse( receivedDateKey, out receivedDate );
+                    if ( successfulParse )
                     {
                         transaction.TransactionDateTime = receivedDate;
                         transaction.CreatedDateTime = receivedDate;
@@ -281,7 +305,7 @@ namespace Excavator.CSV
                         transaction.FinancialPaymentDetail = paymentDetail;
                     }
 
-                    string checkNumber = row[CheckNumber] as string;
+                    string checkNumber = row[CheckNumber];
                     // if the check number is valid, put it in the transaction code
                     if ( checkNumber.AsType<int?>() != null )
                     {
@@ -298,13 +322,13 @@ namespace Excavator.CSV
                     string fundGLAccount = row[FundGLAccount] as string;
                     string subFundGLAccount = row[SubFundGLAccount] as string;
                     string isFundActiveKey = row[FundIsActive];
-                    Boolean? isFundActive = isFundActiveKey.AsType<Boolean?>();
+                    var isFundActive = isFundActiveKey.AsType<Boolean?>();
                     string isSubFundActiveKey = row[SubFundIsActive];
-                    Boolean? isSubFundActive = isSubFundActiveKey.AsType<Boolean?>();
+                    var isSubFundActive = isSubFundActiveKey.AsType<Boolean?>();
                     string statedValueKey = row[StatedValue];
-                    decimal? statedValue = statedValueKey.AsType<decimal?>();
+                    var statedValue = statedValueKey.AsType<decimal?>();
                     string amountKey = row[Amount];
-                    decimal? amount = amountKey.AsType<decimal?>();
+                    var amount = amountKey.AsType<decimal?>();
                     if ( !String.IsNullOrWhiteSpace( fundName ) & amount != null )
                     {
                         int transactionAccountId;
@@ -432,13 +456,13 @@ namespace Excavator.CSV
                 string amountKey = row[TotalPledge];
                 decimal? amount = amountKey.AsType<decimal?>();
                 string startDateKey = row[StartDate];
-                if ( String.IsNullOrWhiteSpace( startDateKey ) )
+                if ( string.IsNullOrWhiteSpace( startDateKey ) )
                 {
                     startDateKey = "01/01/0001";
                 }
                 DateTime? startDate = startDateKey.AsType<DateTime?>();
                 string endDateKey = row[EndDate];
-                if ( String.IsNullOrWhiteSpace( endDateKey ) )
+                if ( string.IsNullOrWhiteSpace( endDateKey ) )
                 {
                     endDateKey = "12/31/9999";
                 }
@@ -481,10 +505,10 @@ namespace Excavator.CSV
                             }
                         }
 
-                        string fundName = row[FundName] as string;
-                        string subFund = row[SubFundName] as string;
-                        string fundGLAccount = row[FundGLAccount] as string;
-                        string subFundGLAccount = row[SubFundGLAccount] as string;
+                        string fundName = row[FundName];
+                        string subFund = row[SubFundName];
+                        string fundGLAccount = row[FundGLAccount];
+                        string subFundGLAccount = row[SubFundGLAccount];
                         string isFundActiveKey = row[FundIsActive];
                         Boolean? isFundActive = isFundActiveKey.AsType<Boolean?>();
                         string isSubFundActiveKey = row[SubFundIsActive];

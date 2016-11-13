@@ -231,34 +231,31 @@ namespace Excavator.CSV
 
             foreach ( var csvData in selectedCsvData )
             {
-                if ( csvData.RecordType == CSVInstance.RockDataType.INDIVIDUAL )
+                switch (csvData.RecordType)
                 {
-                    completed += LoadIndividuals( csvData );
+                    case CSVInstance.RockDataType.INDIVIDUAL:
+                        completed += LoadIndividuals( csvData );
 
-                    //
-                    // Refresh the list of imported people for other record types to use.
-                    //
-                    LoadPersonKeys( new RockContext() );
-                }
-                else if ( csvData.RecordType == CSVInstance.RockDataType.FAMILY )
-                {
-                    completed += LoadFamily( csvData );
-                }
-                else if ( csvData.RecordType == CSVInstance.RockDataType.METRICS )
-                {
-                    completed += LoadMetrics( csvData );
-                }
-                else if ( csvData.RecordType == CSVInstance.RockDataType.PLEDGE )
-                {
-                    completed += MapPledge( csvData );
-                }
-                else if ( csvData.RecordType == CSVInstance.RockDataType.BATCH )
-                {
-                    completed += MapBatch( csvData );
-                }
-                else if ( csvData.RecordType == CSVInstance.RockDataType.CONTRIBUTION )
-                {
-                    completed += MapContribution( csvData );
+                        //
+                        // Refresh the list of imported people for other record types to use.
+                        //
+                        LoadPersonKeys( new RockContext() );
+                        break;
+                    case CSVInstance.RockDataType.FAMILY:
+                        completed += LoadFamily( csvData );
+                        break;
+                    case CSVInstance.RockDataType.METRICS:
+                        completed += LoadMetrics( csvData );
+                        break;
+                    case CSVInstance.RockDataType.PLEDGE:
+                        completed += MapPledge( csvData );
+                        break;
+                    case CSVInstance.RockDataType.BATCH:
+                        completed += MapBatch( csvData );
+                        break;
+                    case CSVInstance.RockDataType.CONTRIBUTION:
+                        completed += MapContribution( csvData );
+                        break;
                 }
             } //read all files
 
@@ -315,7 +312,7 @@ namespace Excavator.CSV
 
             ImportedBatches = new FinancialBatchService( lookupContext ).Queryable().AsNoTracking()
                 .Where( b => b.ForeignId != null )
-                .ToDictionary( t => ( int )t.ForeignId, t => ( int? )t.Id );
+                .ToDictionary( t => t.ForeignId.Value, t => ( int? )t.Id );
             
             return true;
         }
