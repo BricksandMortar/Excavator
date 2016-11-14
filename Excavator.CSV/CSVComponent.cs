@@ -256,6 +256,9 @@ namespace Excavator.CSV
                     case CSVInstance.RockDataType.CONTRIBUTION:
                         completed += MapContribution( csvData );
                         break;
+                    case CSVInstance.RockDataType.STATUSADVANCEDECLINE:
+                        completed += MapNotes(csvData);
+                        break;
                 }
             } //read all files
 

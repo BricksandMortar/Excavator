@@ -38,6 +38,7 @@ namespace Excavator.CSV
             BATCH,
             CONTRIBUTION,
             PLEDGE,
+            STATUSADVANCEDECLINE,
             NONE
         };
 
