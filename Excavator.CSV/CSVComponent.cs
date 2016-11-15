@@ -557,6 +557,7 @@ namespace Excavator.CSV
         private const int StatedValue = 12;
         private const int ContributionID = 13;
         private const int ContributionBatchID = 14;
+        private const int ContributorType = 15;
 
         #endregion Contribution Constants
 

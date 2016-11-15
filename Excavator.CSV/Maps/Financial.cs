@@ -141,8 +141,10 @@ namespace Excavator.CSV
         private int MapContribution( CSVInstance csvData )
         {
             var lookupContext = new RockContext();
+            var groupService = new GroupService(lookupContext);
             int transactionEntityTypeId = EntityTypeCache.Read( "Rock.Model.FinancialTransaction" ).Id;
             var transactionTypeContributionId = DefinedValueCache.Read( new Guid( Rock.SystemGuid.DefinedValue.TRANSACTION_TYPE_CONTRIBUTION ), lookupContext ).Id;
+            Guid? adultGuid = Rock.SystemGuid.GroupRole.GROUPROLE_FAMILY_MEMBER_ADULT.AsGuid();
 
             var currencyTypes = DefinedTypeCache.Read( new Guid( Rock.SystemGuid.DefinedType.FINANCIAL_CURRENCY_TYPE ) );
             int currencyTypeACH = currencyTypes.DefinedValues.FirstOrDefault( dv => dv.Guid.Equals( new Guid( Rock.SystemGuid.DefinedValue.CURRENCY_TYPE_ACH ) ) ).Id;
@@ -197,6 +199,7 @@ namespace Excavator.CSV
                 int? individualId = individualIdKey.AsType<int?>();
                 string contributionIdKey = row[ContributionID];
                 int? contributionId = contributionIdKey.AsType<int?>();
+                string contributorType = row[ContributorType];
 
                 if ( contributionId != null && !importedContributions.ContainsKey( ( int )contributionId ) )
                 {
@@ -208,20 +211,30 @@ namespace Excavator.CSV
                     transaction.ForeignId = contributionId;
 
                     int? giverAliasId = null;
-                    var personKeys = GetPersonKeys( individualId );
-                    if (personKeys == null)
+                    switch ( contributorType )
                     {
-                        giverAliasId = personService.Queryable().FirstOrDefault(p => p.ForeignKey == individualIdKey).PrimaryAliasId;
+                        case "Child":
+                        case "Spouse":
+                        case "Head":
+                            var personKeys = GetPersonKeys( individualId );
+                            if ( personKeys == null )
+                            {
+                                giverAliasId = personService.Get( individualId.Value )?.PrimaryAliasId;
+                            }
+                            else if ( personKeys != null && personKeys.PersonAliasId > 0 )
+                            {
+                                giverAliasId = personKeys.PersonAliasId;
+                            }
+                            break;
+                        case "Household":
+                            giverAliasId = groupService.Get( individualId.Value )?.Members.FirstOrDefault( m => m.GroupRole.Guid == adultGuid )?.Person?.PrimaryAliasId;
+                            break;
+                        default:
+                            break;
                     }
-                    else if ( personKeys != null && personKeys.PersonAliasId > 0 )
-                    {
-                        giverAliasId = personKeys.PersonAliasId;
-                    }
-
 
                     if ( giverAliasId.HasValue )
                     {
-                        giverAliasId = personKeys.PersonAliasId;
                         transaction.CreatedByPersonAliasId = giverAliasId;
                         transaction.AuthorizedPersonAliasId = giverAliasId;
                         transaction.ProcessedByPersonAliasId = giverAliasId;
@@ -400,6 +413,8 @@ namespace Excavator.CSV
                     {
                         SaveContributions( newTransactions );
                         newTransactions.Clear();
+                        lookupContext = new RockContext();
+                        groupService = new GroupService(lookupContext);
                         ReportPartialProgress();
                     }
                 }
