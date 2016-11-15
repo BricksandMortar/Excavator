@@ -29,25 +29,25 @@ namespace Excavator.CSV
 
             int completed = 0;
 
-            ReportProgress( 0, string.Format( "Starting metrics import ({0:N0} already exist).", 0 ) );
+            ReportProgress( 0, string.Format( "Starting Status Advance Decline import ({0:N0} already exist).", 0 ) );
 
             string[] row;
             // Uses a look-ahead enumerator: this call will move to the next record immediately
             while ( ( row = csvData.Database.FirstOrDefault() ) != null )
             {
 
-                string rowIndividualIdKey = row[NoteIndividualId];
+                string rowIndividualIdKey = row[NOTE_INDIVIDUAL_ID];
                 int? rowIndividualId = rowIndividualIdKey.AsType<int?>();
-                string rowAttributeName = row[NoteAttributeName];
-                string rowComment = row[NoteComment];
+                string rowAttributeName = row[NOTE_ATTRIBUTE_NAME];
+                string rowComment = row[NOTE_COMMENT];
 
                 int? personId = null;
                 var personKeys = GetPersonKeys( rowIndividualId );
                 if ( personKeys == null )
                 {
-                    personId = personService.Queryable().FirstOrDefault( p => p.ForeignKey == rowIndividualIdKey ).Id;
+                    personId = personService.Queryable().FirstOrDefault( p => p.ForeignKey == rowIndividualIdKey )?.Id;
                 }
-                else if ( personKeys != null && personKeys.PersonId > 0 )
+                else if ( personKeys.PersonId > 0 )
                 {
                     personId = personKeys.PersonId;
                 }
@@ -64,10 +64,14 @@ namespace Excavator.CSV
                 {
                     continue;
                 }
-                note.Text = rowAttributeName + ": " + splitComment[1];
+                DateTime noteDateTime;
+                bool successfulDateParse = DateTime.TryParse(row[NOTE_START_DATE], out noteDateTime);
+                note.Text = splitComment[1];
                 note.EntityId = personId;
                 note.NoteTypeId = statusNoteTypeId;
                 note.Caption = rowAttributeName;
+                note.CreatedByPersonAliasId = ImportPersonAliasId;
+                note.CreatedDateTime = successfulDateParse ? noteDateTime : ImportDateTime;
                 notes.Add( note );
 
                 completed++;
@@ -82,6 +86,7 @@ namespace Excavator.CSV
 
                     // Reset lookup context
                     lookupContext = new RockContext();
+                    personService = new PersonService(lookupContext);
                     notes.Clear();
                 }
             }
@@ -92,11 +97,11 @@ namespace Excavator.CSV
                 SaveNotes( notes );
             }
 
-            ReportProgress( 0, string.Format( "Finished metrics import: {0:N0} metrics added or updated.", completed ) );
+            ReportProgress( 0, string.Format( "Finished status advanced decline import: {0:N0} person notes added.", completed ) );
             return completed;
         }
 
-        private void SaveNotes( List<Note> notes )
+        private static void SaveNotes( List<Note> notes )
         {
 
             var rockContext = new RockContext();
@@ -107,9 +112,9 @@ namespace Excavator.CSV
             } );
         }
 
-        private const int NoteIndividualId = 0;
-        private const int NoteAttributeName = 2;
-        private const int NoteStartDate = 3;
-        private const int NoteComment = 5;
+        private const int NOTE_INDIVIDUAL_ID = 0;
+        private const int NOTE_ATTRIBUTE_NAME = 2;
+        private const int NOTE_START_DATE = 3;
+        private const int NOTE_COMMENT = 5;
     }
 }
