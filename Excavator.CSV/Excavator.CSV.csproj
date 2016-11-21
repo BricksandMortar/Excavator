@@ -71,6 +71,7 @@
     <Compile Include="CSVComponent.cs" />
     <Compile Include="CSVInstance.cs" />
     <Compile Include="Maps\Financial.cs" />
+    <Compile Include="Maps\Company.cs" />
     <Compile Include="Maps\StatusNotes.cs" />
     <Compile Include="Maps\Metrics.cs" />
     <Compile Include="Maps\Family.cs" />

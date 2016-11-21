@@ -325,17 +325,22 @@ namespace Excavator.CSV
         /// </summary>
         /// <param name="individualId">The individual identifier.</param>
         /// <returns></returns>
-        protected static PersonKeys GetPersonKeys( int? individualId = null )
+        protected static PersonKeys GetPersonKeys( int? individualId = null, int? householdId = null)
         {
             if ( individualId != null )
             {
                 return ImportedPeopleKeys.FirstOrDefault( p => p.IndividualId == individualId );
             }
-            else
+            if ( householdId != null )
             {
-                return null;
+                return ImportedPeopleKeys.Where( p => p.HouseholdId == householdId )
+                                         .OrderBy( p => ( int ) p.FamilyRoleId )
+                                         .FirstOrDefault();
             }
+            return null;
         }
+
+
 
         protected static void LoadPersonKeys( RockContext lookupContext )
         {
