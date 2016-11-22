@@ -20,7 +20,7 @@ namespace Excavator.CSV
         /// </summary>
         /// <param name="tableData">The table data.</param>
         /// <returns></returns>
-        private void MapCompany( CSVInstance csvData )
+        private int MapCompany( CSVInstance csvData )
         {
             var lookupContext = new RockContext();
             var businessList = new List<Group>();
@@ -98,6 +98,7 @@ namespace Excavator.CSV
             }
 
             ReportProgress( 100, string.Format( "Finished company import: {0:N0} companies imported.", completed ) );
+            return completed;
         }
 
         /// <summary>

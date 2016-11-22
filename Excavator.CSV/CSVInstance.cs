@@ -39,6 +39,7 @@ namespace Excavator.CSV
             CONTRIBUTION,
             PLEDGE,
             STATUSADVANCEDECLINE,
+            BUSINESS,
             NONE
         };
 

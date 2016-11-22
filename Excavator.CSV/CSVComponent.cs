@@ -259,6 +259,9 @@ namespace Excavator.CSV
                     case CSVInstance.RockDataType.STATUSADVANCEDECLINE:
                         completed += MapNotes(csvData);
                         break;
+                    case CSVInstance.RockDataType.BUSINESS:
+                        completed += MapCompany( csvData );
+                        break;
                 }
             } //read all files
 
