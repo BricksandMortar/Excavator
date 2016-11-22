@@ -195,8 +195,8 @@ namespace Excavator.CSV
             // Uses a look-ahead enumerator: this call will move to the next record immediately
             while ( (row = csvData.Database.FirstOrDefault()) != null )
             {
-                string individualIdKey = row[IndividualID];
-                int? individualId = individualIdKey.AsType<int?>();
+                string contributionTypeIdKey = row[ContributionTypeId];
+                int? contributionTypeId = contributionTypeIdKey.AsType<int?>();
                 string contributionIdKey = row[ContributionID];
                 int? contributionId = contributionIdKey.AsType<int?>();
                 string contributorType = row[ContributorType];
@@ -216,10 +216,10 @@ namespace Excavator.CSV
                         case "Child":
                         case "Spouse":
                         case "Head":
-                            var personKeys = GetPersonKeys( individualId );
+                            var personKeys = GetPersonKeys( contributionTypeId );
                             if ( personKeys == null )
                             {
-                                giverAliasId = personService.Get( individualId.Value )?.PrimaryAliasId;
+                                giverAliasId = personService.Get( contributionTypeId.Value )?.PrimaryAliasId;
                             }
                             else if ( personKeys != null && personKeys.PersonAliasId > 0 )
                             {
@@ -227,9 +227,7 @@ namespace Excavator.CSV
                             }
                             break;
                         case "Household":
-                            giverAliasId = groupService.Get( individualId.Value )?.Members.FirstOrDefault( m => m.GroupRole.Guid == adultGuid )?.Person?.PrimaryAliasId;
-                            break;
-                        default:
+                            giverAliasId = groupService.Queryable().FirstOrDefault(g => g.ForeignKey == contributionTypeIdKey)?.Members.FirstOrDefault( m => m.GroupRole.Guid == adultGuid )?.Person?.PrimaryAliasId;
                             break;
                     }
 
@@ -486,7 +484,7 @@ namespace Excavator.CSV
                 int? pledgeId = pledgeIdKey.AsType<int?>();
                 if ( amount != null && !importedPledges.ContainsKey( ( int )pledgeId ) )
                 {
-                    string individualIdKey = row[IndividualID];
+                    string individualIdKey = row[ContributionTypeId];
                     int? individualId = individualIdKey.AsType<int?>();
 
                     var personKeys = GetPersonKeys( individualId );

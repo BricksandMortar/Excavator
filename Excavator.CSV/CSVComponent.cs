@@ -547,7 +547,7 @@ namespace Excavator.CSV
          * Definition for the Contribution.csv import file:
          */
 
-        private const int IndividualID = 0;
+        private const int ContributionTypeId = 0;
         private const int FundName = 1;
         private const int SubFundName = 2;
         private const int FundGLAccount = 3;
@@ -571,7 +571,7 @@ namespace Excavator.CSV
         /*
          * Definition for the Pledge.csv import file:
          * Columns already numbered from Individuals file:
-         * private const int IndividualID = 0;
+         * private const int ContributionTypeId = 0;
          * private const int FundName = 1;
          * private const int SubFundName = 2;
          * private const int FundGLAccount = 3;
