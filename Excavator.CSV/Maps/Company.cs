@@ -48,12 +48,14 @@ namespace Excavator.CSV
                 if ( GetPersonKeys(null, householdId) == null )
                 {
                     var businessGroup = new Group();
-                    var businessPerson = new Person();
+                    var businessPerson = new Person
+                    {
+                        CreatedByPersonAliasId = ImportPersonAliasId,
+                        CreatedDateTime = DateTime.Now,
+                        RecordTypeValueId = businessRecordTypeId,
+                        RecordStatusValueId = statusActiveId
+                    };
 
-                    businessPerson.CreatedByPersonAliasId = ImportPersonAliasId;
-                    businessPerson.CreatedDateTime = row[Company_Created_Date].AsDateTime() ?? RockDateTime.Now;
-                    businessPerson.RecordTypeValueId = businessRecordTypeId;
-                    businessPerson.RecordStatusValueId = statusActiveId;
 
                     var businessName = row[Company_Household_Name] as string;
                     if ( businessName != null )
@@ -66,7 +68,6 @@ namespace Excavator.CSV
 
                     businessPerson.Attributes = new Dictionary<string, AttributeCache>();
                     businessPerson.AttributeValues = new Dictionary<string, AttributeValueCache>();
-                    AddPersonAttribute( HouseholdIdAttribute, businessPerson, householdId.ToString() );
 
                     var groupMember = new GroupMember();
                     groupMember.Person = businessPerson;
