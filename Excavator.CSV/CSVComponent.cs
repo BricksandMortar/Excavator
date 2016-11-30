@@ -226,7 +226,7 @@ namespace Excavator.CSV
             // Person data is important, so load it first
             if ( selectedCsvData.Any( d => d.RecordType == CSVInstance.RockDataType.INDIVIDUAL ) )
             {
-                selectedCsvData = selectedCsvData.OrderByDescending( d => d.RecordType == CSVInstance.RockDataType.INDIVIDUAL ).ToList();
+                selectedCsvData = selectedCsvData.OrderByDescending( d => d.RecordType == CSVInstance.RockDataType.INDIVIDUAL || d.RecordType == CSVInstance.RockDataType.BUSINESS ).ToList();
             }
 
             foreach ( var csvData in selectedCsvData )

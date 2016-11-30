@@ -213,9 +213,11 @@ namespace Excavator.CSV
                     int? giverAliasId = null;
                     switch ( contributorType )
                     {
-                        case "Child":
-                        case "Spouse":
-                        case "Head":
+
+                        case "Household":
+                            giverAliasId = groupService.Queryable().FirstOrDefault( g => g.ForeignKey == contributionTypeIdKey )?.Members.FirstOrDefault( m => m.GroupRole.Guid == adultGuid )?.Person?.PrimaryAliasId;
+                            break;
+                        default:
                             var personKeys = GetPersonKeys( contributionTypeId );
                             if ( personKeys == null )
                             {
@@ -226,11 +228,7 @@ namespace Excavator.CSV
                                 giverAliasId = personKeys.PersonAliasId;
                             }
                             break;
-                        case "Household":
-                            giverAliasId = groupService.Queryable().FirstOrDefault(g => g.ForeignKey == contributionTypeIdKey)?.Members.FirstOrDefault( m => m.GroupRole.Guid == adultGuid )?.Person?.PrimaryAliasId;
-                            break;
                     }
-
                     if ( giverAliasId.HasValue )
                     {
                         transaction.CreatedByPersonAliasId = giverAliasId;
