@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Data.Entity;
 using System.Globalization;
 using System.Linq;
 using Excavator.Utility;
@@ -41,15 +42,25 @@ namespace Excavator.CSV
             string currentFamilyKey = string.Empty;
             int completed = 0;
 
+            var importedFamilies = new GroupService( lookupContext ).Queryable().AsNoTracking()
+               .Where( c => c.ForeignId != null && c.GroupTypeId == familyGroupTypeId )
+               .ToDictionary( t => ( int ) t.ForeignId, t => ( int? ) t.Id );
+
             ReportProgress( 0, string.Format( "Starting family import ({0:N0} already exist).", numImportedFamilies ) );
 
             string[] row;
             // Uses a look-ahead enumerator: this call will move to the next record immediately
             while ( (row = csvData.Database.FirstOrDefault()) != null )
             {
+                
                 string rowFamilyKey = row[FamilyId];
                 int? rowFamilyId = rowFamilyKey.AsType<int?>();
-                string rowFamilyName = row[FamilyName];
+
+                if (rowFamilyId.HasValue && importedFamilies.ContainsKey(rowFamilyId.Value))
+                {
+                    continue;
+                }
+                    string rowFamilyName = row[FamilyName];
 
                 if ( rowFamilyKey != null && rowFamilyKey != currentFamilyGroup.ForeignKey )
                 {
