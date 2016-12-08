@@ -181,8 +181,6 @@ namespace Excavator.CSV
                 defaultBatchId = ImportedBatches[0];
             }
 
-            LoadPersonKeys(lookupContext);
-
             // Get all imported contributions
             var importedContributions = new FinancialTransactionService( lookupContext ).Queryable().AsNoTracking()
                .Where( c => c.ForeignId != null )
@@ -220,15 +218,7 @@ namespace Excavator.CSV
                             giverAliasId = groupService.Queryable().FirstOrDefault( g => g.ForeignKey == contributionTypeIdKey )?.Members.FirstOrDefault( m => m.GroupRole.Guid == adultGuid )?.Person?.PrimaryAliasId;
                             break;
                         case "Organization":
-                            var familyBasedPersonKeys = GetPersonKeys( null, contributionTypeId );
-                            if ( familyBasedPersonKeys == null )
-                            {
-                                giverAliasId = personService.Queryable().FirstOrDefault( p => p.ForeignId == contributionTypeId )?.PrimaryAliasId;
-                            }
-                            else if ( familyBasedPersonKeys != null && familyBasedPersonKeys.PersonAliasId > 0 )
-                            {
-                                giverAliasId = familyBasedPersonKeys.PersonAliasId;
-                            }
+                            giverAliasId = groupService.Queryable().FirstOrDefault( g => g.ForeignId == contributionTypeId ).Members?.FirstOrDefault().Person?.PrimaryAliasId;
                             break;
                         default:
                             var personKeys = GetPersonKeys( contributionTypeId );
@@ -425,6 +415,7 @@ namespace Excavator.CSV
                         newTransactions.Clear();
                         lookupContext = new RockContext();
                         groupService = new GroupService(lookupContext);
+                        personService = new PersonService(lookupContext);
                         ReportPartialProgress();
                     }
                 }
