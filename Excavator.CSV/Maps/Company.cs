@@ -115,17 +115,17 @@ namespace Excavator.CSV
                     string city = row[CONCTACT_CITY];
                     string zip = row[CONTACT_POSTAL];
 
-//                    var primaryAddress = locationService.Get( address1, address2, city, null, zip, null, verifyLocation: false );
+                    var primaryAddress = locationService.Get( address1, address2, city, null, zip, null, verifyLocation: false );
 
-//                    if ( primaryAddress != null & contactGroup != null )
-//                    {
-//                        var primaryLocation = new GroupLocation();
-//                        primaryLocation.LocationId = primaryAddress.Id;
-//                        primaryLocation.IsMailingLocation = true;
-//                        primaryLocation.IsMappedLocation = true;
-//                        primaryLocation.GroupLocationTypeValueId = homeLocationTypeId;
-//                        newGroupLocations.Add( primaryLocation, contactGroup.ForeignKey );
-//                    }
+                    if ( primaryAddress != null & contactGroup != null )
+                    {
+                        var primaryLocation = new GroupLocation();
+                        primaryLocation.LocationId = primaryAddress.Id;
+                        primaryLocation.IsMailingLocation = true;
+                        primaryLocation.IsMappedLocation = true;
+                        primaryLocation.GroupLocationTypeValueId = homeLocationTypeId;
+                        newGroupLocations.Add( primaryLocation, contactGroup.ForeignKey );
+                    }
 
                     completed++;
                     if ( completed % ( ReportingNumber * 10 ) < 1 )
@@ -274,8 +274,7 @@ namespace Excavator.CSV
                             int businessPersonId = businessCarrier.BusinessGroup.Members.FirstOrDefault().Person.Id;
                             foreach (var member in businessCarrier.ContactFamily.Members)
                             {
-                                groupMemberService.CreateKnownRelationship(member.Person.Id, businessPersonId,
-                                    businessContactRole);
+                                groupMemberService.CreateKnownRelationship(businessPersonId, member.Person.Id, businessContactRole );
                             }
                         }
                     }
