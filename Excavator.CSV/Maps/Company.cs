@@ -117,14 +117,14 @@ namespace Excavator.CSV
 
                     var primaryAddress = locationService.Get( address1, address2, city, null, zip, null, verifyLocation: false );
 
-                    if ( primaryAddress != null & contactGroup != null )
+                    if ( primaryAddress != null & businessGroup != null )
                     {
                         var primaryLocation = new GroupLocation();
                         primaryLocation.LocationId = primaryAddress.Id;
                         primaryLocation.IsMailingLocation = true;
                         primaryLocation.IsMappedLocation = true;
                         primaryLocation.GroupLocationTypeValueId = homeLocationTypeId;
-                        newGroupLocations.Add( primaryLocation, contactGroup.ForeignKey );
+                        newGroupLocations.Add( primaryLocation, businessGroup.ForeignKey );
                     }
 
                     completed++;
@@ -174,9 +174,9 @@ namespace Excavator.CSV
                                                 Rock.SystemGuid.GroupRole
                                                     .GROUPROLE_KNOWN_RELATIONSHIPS_BUSINESS_CONTACT ) ).Id;
 
-
                 foreach ( var businessCarrier in businessList)
                 {
+                    importedGroupContacts.Add( businessCarrier.BusinessGroup );
                     foreach (var groupMember in businessCarrier.BusinessGroup.Members)
                     {
                         // don't call LoadAttributes, it only rewrites existing cache objects
@@ -225,7 +225,6 @@ namespace Excavator.CSV
 
                     if (businessCarrier.ContactFamily != null)
                     {
-                        importedGroupContacts.Add(businessCarrier.ContactFamily);
                         foreach (var groupMember in businessCarrier.ContactFamily.Members)
                         {
                             // don't call LoadAttributes, it only rewrites existing cache objects
