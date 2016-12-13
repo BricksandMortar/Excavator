@@ -43,7 +43,7 @@ namespace Excavator.CSV
             int completed = 0;
 
             var importedFamilies = new GroupService( lookupContext ).Queryable().AsNoTracking()
-               .Where( c => c.ForeignId != null && c.GroupTypeId == familyGroupTypeId )
+               .Where( c => c.ForeignId != null && c.GroupTypeId == familyGroupTypeId && c.ForeignKey == "Imported" )
                .ToDictionary( t => ( int ) t.ForeignId, t => ( int? ) t.Id );
 
             ReportProgress( 0, string.Format( "Starting family import ({0:N0} already exist).", numImportedFamilies ) );
@@ -52,9 +52,7 @@ namespace Excavator.CSV
             // Uses a look-ahead enumerator: this call will move to the next record immediately
             while ( (row = csvData.Database.FirstOrDefault()) != null )
             {
-                
-                string rowFamilyKey = row[FamilyId];
-                int? rowFamilyId = rowFamilyKey.AsType<int?>();
+                int? rowFamilyId = row[FamilyId].AsType<int?>();
 
                 if (rowFamilyId.HasValue && importedFamilies.ContainsKey(rowFamilyId.Value))
                 {
@@ -62,13 +60,13 @@ namespace Excavator.CSV
                 }
                     string rowFamilyName = row[FamilyName];
 
-                if ( rowFamilyKey != null && rowFamilyKey != currentFamilyGroup.ForeignKey )
+                if ( rowFamilyId.HasValue && rowFamilyId != currentFamilyGroup.ForeignId )
                 {
-                    currentFamilyGroup = ImportedFamilies.FirstOrDefault( g => g.ForeignKey == rowFamilyKey );
+                    currentFamilyGroup = ImportedFamilies.FirstOrDefault( g => g.ForeignId == rowFamilyId );
                     if ( currentFamilyGroup == null )
                     {
                         currentFamilyGroup = new Group();
-                        currentFamilyGroup.ForeignKey = rowFamilyKey;
+                        currentFamilyGroup.ForeignKey = "Imported";
                         currentFamilyGroup.ForeignId = rowFamilyId;
                         currentFamilyGroup.Name = row[FamilyName];
                         currentFamilyGroup.CreatedByPersonAliasId = ImportPersonAliasId;
@@ -117,7 +115,7 @@ namespace Excavator.CSV
                         primaryLocation.IsMailingLocation = true;
                         primaryLocation.IsMappedLocation = true;
                         primaryLocation.GroupLocationTypeValueId = homeLocationTypeId;
-                        newGroupLocations.Add( primaryLocation, rowFamilyKey );
+                        newGroupLocations.Add( primaryLocation, rowFamilyId.ToString() );
                     }
 
                     string famSecondAddress = row[SecondaryAddress];
@@ -136,7 +134,7 @@ namespace Excavator.CSV
                         secondaryLocation.IsMailingLocation = true;
                         secondaryLocation.IsMappedLocation = true;
                         secondaryLocation.GroupLocationTypeValueId = workLocationTypeId;
-                        newGroupLocations.Add( secondaryLocation, rowFamilyKey );
+                        newGroupLocations.Add( secondaryLocation, rowFamilyId.ToString() );
                     }
 
                     DateTime createdDateValue;
