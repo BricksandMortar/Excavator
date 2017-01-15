@@ -70,6 +70,7 @@
   <ItemGroup>
     <Compile Include="CSVComponent.cs" />
     <Compile Include="CSVInstance.cs" />
+    <Compile Include="Maps\Group.cs" />
     <Compile Include="Maps\Financial.cs" />
     <Compile Include="Maps\Company.cs" />
     <Compile Include="Maps\StatusNotes.cs" />
