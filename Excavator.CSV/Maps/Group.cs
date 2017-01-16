@@ -4,6 +4,12 @@ using System.Data.Entity;
 using System.Globalization;
 using System.Linq;
 using Excavator.Utility;
+using Ical.Net;
+using Ical.Net.DataTypes;
+using Ical.Net.Interfaces.DataTypes;
+using Ical.Net.Serialization;
+using Ical.Net.Serialization.iCalendar.Serializers;
+using NodaTime;
 using Rock;
 using Rock.Data;
 using Rock.Model;
@@ -108,8 +114,26 @@ namespace Excavator.CSV
                         groupMeetingLocation.IsMailingLocation = false;
                         groupMeetingLocation.IsMappedLocation = true;
                         groupMeetingLocation.GroupLocationTypeValueId = meetingLocationTypeId;
-                        // TODO Schedules
-                        groupMeetingLocation.Schedules.Add();
+
+                        string[] formats = {"dd/MM/yyyy"};
+                        var frequencyType = FrequencyType.None;;
+                        int frequency = GetFrequency(row[24], out frequencyType);
+
+                        Schedule schedule;
+                        if (frequencyType == FrequencyType.Weekly)
+                        {
+                            schedule = CreateWeeklySchedule( ( DayOfWeek ) Enum.Parse( typeof( DayOfWeek ), row[25] ), DateTime.ParseExact( row[26], formats, new CultureInfo( "en-US" ), DateTimeStyles.None ), new LocalTime(), new LocalTime(), frequency );
+
+                            groupMeetingLocation.Schedules.Add( schedule );
+                        }
+                        else if (frequencyType == FrequencyType.Monthly)
+                        {
+                            schedule = CreateMonthlySchedule(DateTime.ParseExact(row[26], formats, new CultureInfo("en-US"), DateTimeStyles.None), new LocalTime(), new LocalTime());
+
+                            groupMeetingLocation.Schedules.Add( schedule );
+                        }
+
+
                         newGroupLocations.Add( groupMeetingLocation, rowGroupId.ToString() );
                     }
                     
@@ -148,6 +172,80 @@ namespace Excavator.CSV
 
             ReportProgress( 0, string.Format( "Finished family import: {0:N0} families added or updated.", completed ) );
             return completed;
+        }
+
+        private static int GetFrequency(string input, out FrequencyType frequencyType)
+        {
+            if (input.Length == 1 && input.AsIntegerOrNull() != null)
+            {
+                frequencyType = FrequencyType.Monthly;
+                return input.AsInteger();
+            }
+            frequencyType = FrequencyType.Weekly;
+
+            switch (input)
+            {
+                case "Every 2 Weeks":
+                    return 2;
+                case "Every Week":
+                    return 1;
+                default:
+                    throw new Exception( "Failed to parse frequency of group schedule" );
+            }
+
+        }
+
+        private Schedule CreateWeeklySchedule(DayOfWeek dayOfWeek, DateTime startDate, LocalTime startTime, LocalTime endTime, int weekFrequency )
+        {
+            var schedule = new Schedule();
+            schedule.WeeklyDayOfWeek = dayOfWeek;
+            schedule.EffectiveStartDate = startDate;
+            schedule.WeeklyTimeOfDay = new TimeSpan(startTime.Hour, startDate.Minute, startDate.Second);
+
+            var endOfSession = new DateTime(startDate.Year, startDate.Month, startDate.Day, endTime.Hour, endTime.Minute, endTime.Second);
+            var recurrenceRule = new RecurrencePattern(FrequencyType.Weekly, weekFrequency);
+
+            var e = new Event()
+            {
+                DtStart = new CalDateTime(startDate.AddHours(startTime.Hour).AddMinutes(startDate.Minute)),
+                DtEnd = new CalDateTime(endOfSession),
+                RecurrenceRules = new List<IRecurrencePattern> {recurrenceRule}
+            };
+
+            var calendar = new Ical.Net.Calendar();
+            calendar.Events.Add(e);
+
+            var serializer = new CalendarSerializer(new SerializationContext());
+            schedule.iCalendarContent = serializer.SerializeToString(calendar);
+            return schedule;
+        }
+
+        private Schedule CreateMonthlySchedule( DateTime startDate, LocalTime startTime, LocalTime endTime )
+        {
+            var schedule = new Schedule();
+            schedule.EffectiveStartDate = startDate;
+
+            var endOfSession = new DateTime( startDate.Year, startDate.Month, startDate.Day, endTime.Hour, endTime.Minute, endTime.Second );
+            var recurrenceRule = new RecurrencePattern( FrequencyType.Monthly, 1 );
+
+            var e = new Event()
+            {
+                DtStart = new CalDateTime( startDate.AddHours( startTime.Hour ).AddMinutes( startDate.Minute ) ),
+                DtEnd = new CalDateTime( endOfSession ),
+                RecurrenceRules = new List<IRecurrencePattern> { recurrenceRule }
+            };
+
+            var calendar = new Ical.Net.Calendar();
+            calendar.Events.Add( e );
+
+            var serializer = new CalendarSerializer( new SerializationContext() );
+            schedule.iCalendarContent = serializer.SerializeToString( calendar );
+            return schedule;
+        }
+
+        private Schedule CreateFortnightlySchedule( DayOfWeek dayOfWeek, DateTime startDate, LocalTime startTime, LocalTime endTime )
+        {
+            throw new NotImplementedException();
         }
 
         /// <summary>
