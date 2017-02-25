@@ -31,21 +31,17 @@ namespace Excavator.CSV
         /// Loads the family data.
         /// </summary>
         /// <param name="csvData">The CSV data.</param>
-        private int LoadGroup( CSVInstance csvData )
+        private int MapGroup( CSVInstance csvData )
         {
-            //TODO Assuming group ids won't clash with family ids, WRONG ASSUMPTION
-
             // Required variables
             var lookupContext = new RockContext();
             var locationService = new LocationService( lookupContext );
-
-            var groupLocationService = new GroupLocationService( lookupContext );
-            var scheduleService = new ScheduleService( lookupContext );
+            
             int smallGroupGroupTypeId = GroupTypeCache.Read(Rock.SystemGuid.GroupType.GROUPTYPE_SMALL_GROUP).Id;
 
             int meetingLocationTypeId = DefinedValueCache.Read(  Rock.SystemGuid.DefinedValue.GROUP_LOCATION_TYPE_MEETING_LOCATION ).Id;
 
-            var newGroupLocations = new Dictionary<GroupLocation, string>();
+            var newGroupLocations = new Dictionary<int, GroupLocation>();
 
             var groupEntityTypeId = EntityTypeCache.Read("Rock.Model.Group").Id;
             var smallGroupAttributes = new AttributeService( lookupContext ).GetByEntityTypeId( groupEntityTypeId ).ToList();
@@ -85,11 +81,11 @@ namespace Excavator.CSV
                 smallGroupAttributes.AddRange( newAttributes );
             }
 
-            var dateFormats = new[] { "yyyy-MM-dd", "MM/dd/yyyy", "MM/dd/yy" };
+            var dateFormats = new[] { "yyyy-MM-dd", "MM/dd/yyyy", "MM/dd/yy", "M/dd/yyyy", "M/d/yyyy" };
             
             int completed = 0;
 
-            // dictionary: F1Id, RockId
+            // dictionary: F1Id, Group
             ImportedSmallGroups = new GroupService( lookupContext ).Queryable().AsNoTracking()
                .Where( c => c.ForeignId != null && c.GroupTypeId == smallGroupGroupTypeId && c.ForeignKey == EXCAVATOR_IMPORTED_GROUP )
                                                                    // ReSharper disable once PossibleInvalidOperationException
@@ -121,19 +117,23 @@ namespace Excavator.CSV
                         currentGroup.Name = rowGroupName;
                         currentGroup.CreatedByPersonAliasId = ImportPersonAliasId;
                         currentGroup.GroupTypeId = smallGroupGroupTypeId;
-                        var groupCampus = CampusList.FirstOrDefault(c => c.Name.Equals( campusName, StringComparison.InvariantCultureIgnoreCase )
-                            || c.ShortCode.Equals( campusName, StringComparison.InvariantCultureIgnoreCase ));
-                        if ( groupCampus == null)
+                        if (!string.IsNullOrEmpty(campusName))
                         {
-                            groupCampus = new Campus();
-                            groupCampus.IsSystem = false;
-                            groupCampus.Name = campusName;
-                            groupCampus.ShortCode = campusName.RemoveWhitespace();
-                            lookupContext.Campuses.Add( groupCampus );
-                            lookupContext.SaveChanges( DisableAuditing );
-                            CampusList.Add( groupCampus );
+                            var groupCampus = CampusList.FirstOrDefault( c => c.Name.Equals( campusName, StringComparison.InvariantCultureIgnoreCase )
+                             || c.ShortCode.Equals( campusName, StringComparison.InvariantCultureIgnoreCase ) );
+                            if ( groupCampus == null )
+                            {
+                                groupCampus = new Campus();
+                                groupCampus.IsActive = true;
+                                groupCampus.IsSystem = false;
+                                groupCampus.Name = campusName;
+                                groupCampus.ShortCode = campusName.RemoveWhitespace();
+                                lookupContext.Campuses.Add( groupCampus );
+                                lookupContext.SaveChanges( DisableAuditing );
+                                CampusList.Add( groupCampus );
+                            }
+                            currentGroup.CampusId = groupCampus.Id;
                         }
-                        currentGroup.CampusId = groupCampus.Id;
                         newGroups.Add( currentGroup );
                     }                   
 
@@ -155,36 +155,35 @@ namespace Excavator.CSV
                         groupMeetingLocation.IsMappedLocation = true;
                         groupMeetingLocation.GroupLocationTypeValueId = meetingLocationTypeId;
 
-                        string[] formats = {"dd/MM/yyyy"};
+                        int frequency = 0;
                         var frequencyType = FrequencyType.None;
-                        int frequency = GetFrequency(row[24], out frequencyType);
+                        if (!string.IsNullOrEmpty(row[24]))
+                        {
+                             frequency = GetFrequency( row[24], out frequencyType );
+                        }
 
                         Schedule schedule = null;
                         if (frequencyType == FrequencyType.Weekly)
                         {
-                            schedule = CreateWeeklySchedule( ( DayOfWeek ) Enum.Parse( typeof( DayOfWeek ), row[25] ), DateTime.ParseExact( row[26], formats, new CultureInfo( "en-US" ), DateTimeStyles.None ), new LocalTime(), new LocalTime(), frequency );
+                            schedule = CreateWeeklySchedule( ( DayOfWeek ) Enum.Parse( typeof( DayOfWeek ), row[25] ), DateTime.ParseExact( row[26], dateFormats, new CultureInfo( "en-US" ), DateTimeStyles.None ), new LocalTime(), new LocalTime(), frequency );
                         }
                         else if (frequencyType == FrequencyType.Monthly)
                         {
-                            schedule = CreateMonthlySchedule(DateTime.ParseExact(row[26], formats, new CultureInfo("en-US"), DateTimeStyles.None), new LocalTime(), new LocalTime());
+                            schedule = CreateMonthlySchedule(DateTime.ParseExact(row[26], dateFormats, new CultureInfo("en-US"), DateTimeStyles.None), new LocalTime(), new LocalTime());
                         }
 
                         if (schedule != null)
                         {
-                            scheduleService.Add(schedule);
-                            lookupContext.SaveChanges(DisableAuditing);
+                            groupMeetingLocation.Schedules.Add( schedule );
                         }
-
-
-                        groupMeetingLocation.Schedules.Add( schedule );
-                        groupLocationService.Add(groupMeetingLocation);
-                        lookupContext.SaveChanges(DisableAuditing);
-
-                        newGroupLocations.Add( groupMeetingLocation, rowGroupId.ToString() );
+                        
+                        newGroupLocations.Add( rowGroupId.Value, groupMeetingLocation );
                     }
                     
                     currentGroup.CreatedDateTime = ImportDateTime;
                     currentGroup.ModifiedDateTime = ImportDateTime;
+                    currentGroup.Attributes = new Dictionary<string, AttributeCache>();
+                    currentGroup.AttributeValues = new Dictionary<string, AttributeValueCache>();
 
                     foreach ( var attributePair in customAttributes )
                     {
@@ -223,8 +222,6 @@ namespace Excavator.CSV
                         lookupContext.SaveChanges();
                         lookupContext = new RockContext();
                         locationService = new LocationService( lookupContext );
-                        groupLocationService = new GroupLocationService( lookupContext );
-                        scheduleService = new ScheduleService( lookupContext );
                         newGroups.Clear();
                         newGroupLocations.Clear();
                     }
@@ -330,10 +327,9 @@ namespace Excavator.CSV
         /// <summary>
         /// Saves all family changes.
         /// </summary>
-        private void SaveGroups( List<Group> newSmallGroups, Dictionary<GroupLocation, string> newGroupLocations )
+        private void SaveGroups( List<Group> newSmallGroups, Dictionary<int, GroupLocation> newGroupLocations )
         {
             var rockContext = new RockContext();
-            var groupLocationService = new GroupLocationService(rockContext);
 
             // First save any unsaved families
             if ( newSmallGroups.Any() )
@@ -344,8 +340,11 @@ namespace Excavator.CSV
                     rockContext.SaveChanges( DisableAuditing );
                 } );
 
-                // Add these new families to the global list
-                ImportedFamilies.AddRange( newSmallGroups );
+                // Add groups to global list
+                foreach (var newSmallGroup in newSmallGroups)
+                {
+                    ImportedSmallGroups.Add(newSmallGroup.ForeignId.Value, newSmallGroup);
+                }
             }
 
             foreach (var group in newSmallGroups)
@@ -381,15 +380,15 @@ namespace Excavator.CSV
                 // Set updated family id on locations
                 foreach ( var locationPair in newGroupLocations )
                 {
-                    int? familyGroupId = ImportedSmallGroups.Where( k => k.Value.ForeignKey == locationPair.Value ).Select( k => k.Value.Id ).FirstOrDefault();
-                    locationPair.Key.GroupId = ( int )familyGroupId;
+                    int? groupId = ImportedSmallGroups.Where( k => k.Value.ForeignId == locationPair.Key ).Select( k => k.Value.Id ).FirstOrDefault();
+                    locationPair.Value.GroupId = ( int )groupId;
                 }
 
                 // Save locations
                 rockContext.WrapTransaction( ( ) =>
                 {
                     rockContext.Configuration.AutoDetectChangesEnabled = false;
-                    rockContext.GroupLocations.AddRange( newGroupLocations.Keys );
+                    rockContext.GroupLocations.AddRange( newGroupLocations.Values );
                     rockContext.ChangeTracker.DetectChanges();
                     rockContext.SaveChanges( DisableAuditing );
                 } );
