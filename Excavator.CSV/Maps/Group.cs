@@ -51,7 +51,7 @@ namespace Excavator.CSV
 
             var allFields = csvData.TableNodes.FirstOrDefault().Children.Select( ( node, index ) => new { node = node, index = index } ).ToList();
             var customAttributes = allFields
-                .Where( f => f.index > SecurityNote )
+                .Where( f => f.index > 29 )
                 .ToDictionary( f => f.index, f => f.node.Name.RemoveWhitespace() );
 
             // Add any attributes if they don't already exist
@@ -115,6 +115,7 @@ namespace Excavator.CSV
                         currentGroup.ForeignKey = EXCAVATOR_IMPORTED_GROUP;
                         currentGroup.ForeignId = rowGroupId;
                         currentGroup.Name = rowGroupName;
+                        currentGroup.Description = row[3];
                         currentGroup.CreatedByPersonAliasId = ImportPersonAliasId;
                         currentGroup.GroupTypeId = smallGroupGroupTypeId;
                         if (!string.IsNullOrEmpty(campusName))
@@ -175,6 +176,7 @@ namespace Excavator.CSV
                         if (schedule != null)
                         {
                             groupMeetingLocation.Schedules.Add( schedule );
+                            currentGroup.Schedule = schedule;
                         }
                         
                         newGroupLocations.Add( rowGroupId.Value, groupMeetingLocation );
