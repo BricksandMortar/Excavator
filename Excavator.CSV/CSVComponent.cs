@@ -92,6 +92,8 @@ namespace Excavator.CSV
         /// </summary>
         private List<Group> ImportedFamilies;
 
+        protected static Dictionary<int, Group> ImportedSmallGroups;
+
         private List<Group> NewFamilies = new List<Group>();
 
         /// <summary>

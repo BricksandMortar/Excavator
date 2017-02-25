@@ -33,27 +33,67 @@ namespace Excavator.CSV
         /// <param name="csvData">The CSV data.</param>
         private int LoadGroup( CSVInstance csvData )
         {
-            //TODO Assuming group ids won't clash with family ids
+            //TODO Assuming group ids won't clash with family ids, WRONG ASSUMPTION
 
             // Required variables
             var lookupContext = new RockContext();
             var locationService = new LocationService( lookupContext );
+
+            var groupLocationService = new GroupLocationService( lookupContext );
+            var scheduleService = new ScheduleService( lookupContext );
             int smallGroupGroupTypeId = GroupTypeCache.Read(Rock.SystemGuid.GroupType.GROUPTYPE_SMALL_GROUP).Id;
 
             int meetingLocationTypeId = DefinedValueCache.Read(  Rock.SystemGuid.DefinedValue.GROUP_LOCATION_TYPE_MEETING_LOCATION ).Id;
 
             var newGroupLocations = new Dictionary<GroupLocation, string>();
 
+            var groupEntityTypeId = EntityTypeCache.Read("Rock.Model.Group").Id;
+            var smallGroupAttributes = new AttributeService( lookupContext ).GetByEntityTypeId( groupEntityTypeId ).ToList();
+
             var currentGroup = new Group();
             var newGroups = new List<Group>();
 
-            var dateFormats = new[] { "yyyy-MM-dd", "MM/dd/yyyy", "MM/dd/yy" });
+            var allFields = csvData.TableNodes.FirstOrDefault().Children.Select( ( node, index ) => new { node = node, index = index } ).ToList();
+            var customAttributes = allFields
+                .Where( f => f.index > SecurityNote )
+                .ToDictionary( f => f.index, f => f.node.Name.RemoveWhitespace() );
+
+            // Add any attributes if they don't already exist
+            if ( customAttributes.Any() )
+            {
+                var newAttributes = new List<Rock.Model.Attribute>();
+                foreach ( var newAttributePair in customAttributes.Where( ca => !smallGroupAttributes.Any( a => a.Key == ca.Value ) ) )
+                {
+                    var newAttribute = new Rock.Model.Attribute();
+                    newAttribute.Name = newAttributePair.Value;
+                    newAttribute.Key = newAttributePair.Value.RemoveWhitespace();
+                    newAttribute.Description = newAttributePair.Value + " created by CSV import";
+                    newAttribute.EntityTypeQualifierValue = smallGroupGroupTypeId.ToString();
+                    newAttribute.EntityTypeQualifierColumn = "GroupTypeId";
+                    newAttribute.EntityTypeId = groupEntityTypeId;
+                    newAttribute.FieldTypeId = FieldTypeCache.Read( new Guid( Rock.SystemGuid.FieldType.TEXT ), lookupContext ).Id;
+                    newAttribute.DefaultValue = string.Empty;
+                    newAttribute.IsMultiValue = false;
+                    newAttribute.IsGridColumn = false;
+                    newAttribute.IsRequired = false;
+                    newAttribute.Order = 0;
+                    newAttributes.Add( newAttribute );
+                }
+
+                lookupContext.Attributes.AddRange( newAttributes );
+                lookupContext.SaveChanges( DisableAuditing );
+                smallGroupAttributes.AddRange( newAttributes );
+            }
+
+            var dateFormats = new[] { "yyyy-MM-dd", "MM/dd/yyyy", "MM/dd/yy" };
             
             int completed = 0;
 
-            var importedSmallGroups = new GroupService( lookupContext ).Queryable().AsNoTracking()
+            // dictionary: F1Id, RockId
+            ImportedSmallGroups = new GroupService( lookupContext ).Queryable().AsNoTracking()
                .Where( c => c.ForeignId != null && c.GroupTypeId == smallGroupGroupTypeId && c.ForeignKey == EXCAVATOR_IMPORTED_GROUP )
-               .ToDictionary( t => ( int ) t.ForeignId, t => ( int? ) t.Id );
+                                                                   // ReSharper disable once PossibleInvalidOperationException
+               .ToDictionary( t => ( int ) t.ForeignId, t => t );
 
             ReportProgress( 0, "Starting group import" );
 
@@ -63,7 +103,7 @@ namespace Excavator.CSV
             {
                 int? rowGroupId = row[GROUP_ID].AsType<int?>();
 
-                if (rowGroupId.HasValue && importedSmallGroups.ContainsKey(rowGroupId.Value))
+                if (rowGroupId.HasValue && ImportedSmallGroups.ContainsKey(rowGroupId.Value))
                 {
                     continue;
                 }
@@ -97,7 +137,7 @@ namespace Excavator.CSV
                         newGroups.Add( currentGroup );
                     }                   
 
-                    // Add the family addresses since they exist in this file
+                    // Add the address since they exist in this file
                     string locationAddress = row[18];
                     string locationAddress2 = row[19];
                     string locationCity = row[20];
@@ -116,23 +156,29 @@ namespace Excavator.CSV
                         groupMeetingLocation.GroupLocationTypeValueId = meetingLocationTypeId;
 
                         string[] formats = {"dd/MM/yyyy"};
-                        var frequencyType = FrequencyType.None;;
+                        var frequencyType = FrequencyType.None;
                         int frequency = GetFrequency(row[24], out frequencyType);
 
-                        Schedule schedule;
+                        Schedule schedule = null;
                         if (frequencyType == FrequencyType.Weekly)
                         {
                             schedule = CreateWeeklySchedule( ( DayOfWeek ) Enum.Parse( typeof( DayOfWeek ), row[25] ), DateTime.ParseExact( row[26], formats, new CultureInfo( "en-US" ), DateTimeStyles.None ), new LocalTime(), new LocalTime(), frequency );
-
-                            groupMeetingLocation.Schedules.Add( schedule );
                         }
                         else if (frequencyType == FrequencyType.Monthly)
                         {
                             schedule = CreateMonthlySchedule(DateTime.ParseExact(row[26], formats, new CultureInfo("en-US"), DateTimeStyles.None), new LocalTime(), new LocalTime());
-
-                            groupMeetingLocation.Schedules.Add( schedule );
                         }
 
+                        if (schedule != null)
+                        {
+                            scheduleService.Add(schedule);
+                            lookupContext.SaveChanges(DisableAuditing);
+                        }
+
+
+                        groupMeetingLocation.Schedules.Add( schedule );
+                        groupLocationService.Add(groupMeetingLocation);
+                        lookupContext.SaveChanges(DisableAuditing);
 
                         newGroupLocations.Add( groupMeetingLocation, rowGroupId.ToString() );
                     }
@@ -140,20 +186,45 @@ namespace Excavator.CSV
                     currentGroup.CreatedDateTime = ImportDateTime;
                     currentGroup.ModifiedDateTime = ImportDateTime;
 
+                    foreach ( var attributePair in customAttributes )
+                    {
+                        string newAttributeValue = row[attributePair.Key];
+                        if ( !string.IsNullOrWhiteSpace( newAttributeValue ) )
+                        {
+                            // check if this attribute value is a date
+                            DateTime valueAsDateTime;
+                            if ( DateTime.TryParseExact( newAttributeValue, dateFormats, CultureInfo.InvariantCulture, DateTimeStyles.None, out valueAsDateTime ) )
+                            {
+                                newAttributeValue = valueAsDateTime.ToString( "yyyy-MM-dd" );
+                            }
+
+                            int? newAttributeId = smallGroupAttributes.Where( a => a.Key == attributePair.Value.RemoveWhitespace() )
+                                .Select( a => ( int? ) a.Id ).FirstOrDefault();
+                            if ( newAttributeId != null )
+                            {
+                                var newAttribute = AttributeCache.Read( ( int ) newAttributeId );
+                                AddGroupAttribute( newAttribute, currentGroup, newAttributeValue );
+                            }
+                        }
+                    }
+
+
                     completed++;
                     if ( completed % (ReportingNumber * 10) < 1 )
                     {
-                        ReportProgress( 0, string.Format( "{0:N0} families imported.", completed ) );
+                        ReportProgress( 0, string.Format( "{0:N0} groups imported.", completed ) );
                     }
                     else if ( completed % ReportingNumber < 1 )
                     {
-                        SaveFamilies( newGroups, newGroupLocations );
+                        SaveGroups( newGroups, newGroupLocations );
                         ReportPartialProgress();
 
                         // Reset lookup context
                         lookupContext.SaveChanges();
                         lookupContext = new RockContext();
                         locationService = new LocationService( lookupContext );
+                        groupLocationService = new GroupLocationService( lookupContext );
+                        scheduleService = new ScheduleService( lookupContext );
                         newGroups.Clear();
                         newGroupLocations.Clear();
                     }
@@ -163,14 +234,14 @@ namespace Excavator.CSV
             // Check to see if any rows didn't get saved to the database
             if ( newGroupLocations.Any() )
             {
-                SaveFamilies( newGroups, newGroupLocations );
+                SaveGroups( newGroups, newGroupLocations );
             }
 
             lookupContext.SaveChanges();
             DetachAllInContext( lookupContext );
             lookupContext.Dispose();
 
-            ReportProgress( 0, string.Format( "Finished family import: {0:N0} families added or updated.", completed ) );
+            ReportProgress( 0, string.Format( "Finished group import: {0:N0} groups added or updated.", completed ) );
             return completed;
         }
 
@@ -243,30 +314,66 @@ namespace Excavator.CSV
             return schedule;
         }
 
-        private Schedule CreateFortnightlySchedule( DayOfWeek dayOfWeek, DateTime startDate, LocalTime startTime, LocalTime endTime )
+        private static void AddGroupAttribute( AttributeCache attribute, Group group, string attributeValue )
         {
-            throw new NotImplementedException();
+            if ( !string.IsNullOrWhiteSpace( attributeValue ) )
+            {
+                group.Attributes.Add( attribute.Key, attribute );
+                group.AttributeValues.Add( attribute.Key, new AttributeValueCache()
+                {
+                    AttributeId = attribute.Id,
+                    Value = attributeValue
+                } );
+            }
         }
 
         /// <summary>
         /// Saves all family changes.
         /// </summary>
-        private void SaveFamilies( List<Group> newFamilyList, Dictionary<GroupLocation, string> newGroupLocations )
+        private void SaveGroups( List<Group> newSmallGroups, Dictionary<GroupLocation, string> newGroupLocations )
         {
             var rockContext = new RockContext();
+            var groupLocationService = new GroupLocationService(rockContext);
 
             // First save any unsaved families
-            if ( newFamilyList.Any() )
+            if ( newSmallGroups.Any() )
             {
                 rockContext.WrapTransaction( ( ) =>
                 {
-                    rockContext.Groups.AddRange( newFamilyList );
+                    rockContext.Groups.AddRange( newSmallGroups );
                     rockContext.SaveChanges( DisableAuditing );
                 } );
 
                 // Add these new families to the global list
-                ImportedFamilies.AddRange( newFamilyList );
+                ImportedFamilies.AddRange( newSmallGroups );
             }
+
+            foreach (var group in newSmallGroups)
+            {
+                foreach ( var attributeCache in group.Attributes.Select( a => a.Value ) )
+                {
+                    var existingValue = rockContext.AttributeValues.FirstOrDefault( v => v.Attribute.Key == attributeCache.Key && v.EntityId == group.Id );
+                    var newAttributeValue = group.AttributeValues[attributeCache.Key];
+
+                    // set the new value and add it to the database
+                    if ( existingValue == null )
+                    {
+                        existingValue = new AttributeValue();
+                        existingValue.AttributeId = newAttributeValue.AttributeId;
+                        existingValue.EntityId = group.Id;
+                        existingValue.Value = newAttributeValue.Value;
+
+                        rockContext.AttributeValues.Add( existingValue );
+                    }
+                    else
+                    {
+                        existingValue.Value = newAttributeValue.Value;
+                        rockContext.Entry( existingValue ).State = EntityState.Modified;
+                    }
+                }
+            }
+
+
 
             // Now save locations
             if ( newGroupLocations.Any() )
@@ -274,11 +381,8 @@ namespace Excavator.CSV
                 // Set updated family id on locations
                 foreach ( var locationPair in newGroupLocations )
                 {
-                    int? familyGroupId = ImportedFamilies.Where( g => g.ForeignKey == locationPair.Value ).Select( g => ( int? )g.Id ).FirstOrDefault();
-                    if ( familyGroupId != null )
-                    {
-                        locationPair.Key.GroupId = ( int )familyGroupId;
-                    }
+                    int? familyGroupId = ImportedSmallGroups.Where( k => k.Value.ForeignKey == locationPair.Value ).Select( k => k.Value.Id ).FirstOrDefault();
+                    locationPair.Key.GroupId = ( int )familyGroupId;
                 }
 
                 // Save locations
