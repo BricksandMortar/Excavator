@@ -41,6 +41,7 @@ namespace Excavator.CSV
             STATUSADVANCEDECLINE,
             BUSINESS,
             GROUP,
+            MEMBER,
             NONE
         };
 

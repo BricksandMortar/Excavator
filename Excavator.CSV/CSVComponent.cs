@@ -267,6 +267,9 @@ namespace Excavator.CSV
                     case CSVInstance.RockDataType.GROUP:
                         completed += MapGroup(csvData);
                         break;
+                    case CSVInstance.RockDataType.MEMBER:
+                        completed += MapGroupMember(csvData);
+                        break;
                 }
             } //read all files
 
