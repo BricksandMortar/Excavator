@@ -87,6 +87,7 @@
     <Compile Include="CSVComponent.cs" />
     <Compile Include="CSVInstance.cs" />
     <Compile Include="Maps\GroupMember.cs" />
+    <Compile Include="Maps\Attendance.cs" />
     <Compile Include="Maps\Group.cs" />
     <Compile Include="Maps\Financial.cs" />
     <Compile Include="Maps\Company.cs" />

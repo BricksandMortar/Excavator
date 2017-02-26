@@ -34,7 +34,7 @@ namespace Excavator.CSV
             var rockContext = new RockContext();
 
             // Set the supported date formats
-            var dateFormats = new[] { "yyyy-MM-dd", "M/dd/yyyy", "MM/dd/yyyy" };
+            var dateFormats = new[] { "yyyy-MM-dd", "MM/dd/yyyy", "MM/dd/yy", "M/dd/yyyy", "M/d/yyyy" };
 
             int completed = 0;
             ReportProgress( 0, "Starting Group Member import " );
@@ -120,6 +120,8 @@ namespace Excavator.CSV
                                 DateTimeStyles.None),
                         GroupMemberStatus = GroupMemberStatus.Active
                     };
+                    groupMember.Attributes = new Dictionary<string, AttributeCache>();
+                    groupMember.AttributeValues = new Dictionary<string, AttributeValueCache>();
                     newGroupMembers.Add(groupMember);
                 }
                 else
