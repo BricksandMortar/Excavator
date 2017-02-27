@@ -10,6 +10,7 @@ using Ical.Net.Interfaces.DataTypes;
 using Ical.Net.Serialization;
 using Ical.Net.Serialization.iCalendar.Serializers;
 using NodaTime;
+using NodaTime.Text;
 using Rock;
 using Rock.Data;
 using Rock.Model;
@@ -166,7 +167,7 @@ namespace Excavator.CSV
                         Schedule schedule = null;
                         if (frequencyType == FrequencyType.Weekly)
                         {
-                            schedule = CreateWeeklySchedule( ( DayOfWeek ) Enum.Parse( typeof( DayOfWeek ), row[25] ), DateTime.ParseExact( row[26], dateFormats, new CultureInfo( "en-US" ), DateTimeStyles.None ), new LocalTime(), new LocalTime(), frequency );
+                            schedule = CreateWeeklySchedule( ( DayOfWeek ) Enum.Parse( typeof( DayOfWeek ), row[25] ), DateTime.ParseExact( row[26], dateFormats, new CultureInfo( "en-US" ), DateTimeStyles.None ), row[27], row[28], frequency );
                         }
                         else if (frequencyType == FrequencyType.Monthly)
                         {
@@ -265,28 +266,43 @@ namespace Excavator.CSV
 
         }
 
-        private Schedule CreateWeeklySchedule(DayOfWeek dayOfWeek, DateTime startDate, LocalTime startTime, LocalTime endTime, int weekFrequency )
+        private Schedule CreateWeeklySchedule(DayOfWeek dayOfWeek, DateTime startDate, string unparsedStartTime, string unparsedEndTime, int weekFrequency )
         {
             var schedule = new Schedule();
-            schedule.WeeklyDayOfWeek = dayOfWeek;
+
+            var endTimeParseResult = LocalTimePattern.CreateWithInvariantCulture( "h:mmtt" ).Parse( unparsedEndTime );
+            var endTime = endTimeParseResult.Success ? endTimeParseResult.Value : new LocalTime(23, 59);
+            var startTimeParseResult = LocalTimePattern.CreateWithInvariantCulture( "h:mmtt" ).Parse( unparsedStartTime );
+            var startTime = startTimeParseResult.Success ? startTimeParseResult.Value : new LocalTime();
+
+
+            startDate = new DateTime( startDate.Year, startDate.Month, startDate.Day, startTime.Hour,
+                    startTime.Minute, startTime.Second );
             schedule.EffectiveStartDate = startDate;
-            schedule.WeeklyTimeOfDay = new TimeSpan(startTime.Hour, startDate.Minute, startDate.Second);
-
-            var endOfSession = new DateTime(startDate.Year, startDate.Month, startDate.Day, endTime.Hour, endTime.Minute, endTime.Second);
-            var recurrenceRule = new RecurrencePattern(FrequencyType.Weekly, weekFrequency);
-
-            var e = new Event()
+            if (weekFrequency != 1)
             {
-                DtStart = new CalDateTime(startDate.AddHours(startTime.Hour).AddMinutes(startDate.Minute)),
-                DtEnd = new CalDateTime(endOfSession),
-                RecurrenceRules = new List<IRecurrencePattern> {recurrenceRule}
-            };
+                var endOfSession = new DateTime(startDate.Year, startDate.Month, startDate.Day, endTime.Hour,
+                    endTime.Minute, endTime.Second);
+                var recurrenceRule = new RecurrencePattern(FrequencyType.Weekly, weekFrequency);
 
-            var calendar = new Ical.Net.Calendar();
-            calendar.Events.Add(e);
+                var e = new Event()
+                {
+                    DtStart = new CalDateTime( startDate ),
+                    DtEnd = new CalDateTime(endOfSession),
+                    RecurrenceRules = new List<IRecurrencePattern> {recurrenceRule}
+                };
 
-            var serializer = new CalendarSerializer(new SerializationContext());
-            schedule.iCalendarContent = serializer.SerializeToString(calendar);
+                var calendar = new Ical.Net.Calendar();
+                calendar.Events.Add(e);
+
+                var serializer = new CalendarSerializer(new SerializationContext());
+                schedule.iCalendarContent = serializer.SerializeToString(calendar);
+            }
+            else
+            {
+                schedule.WeeklyDayOfWeek = dayOfWeek;
+                schedule.WeeklyTimeOfDay = new TimeSpan( startTime.Hour, startTime.Minute, startTime.Second );
+            }
             return schedule;
         }
 
