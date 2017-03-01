@@ -31,26 +31,26 @@ namespace Excavator.CSV
         private int MapCompany( CSVInstance csvData )
         {
 
-            var lookupContext = new RockContext();
-            var newGroupLocations = new Dictionary<GroupLocation, string>();
+            var rockContext = new RockContext();
+            var newGroupLocations = new Dictionary<string, GroupLocation>();
             var businessList = new List<BusinessCarrier>();
-            var locationService = new LocationService( lookupContext );
+            var locationService = new LocationService( rockContext );
 
             int homeLocationTypeId = DefinedValueCache.Read( new Guid( Rock.SystemGuid.DefinedValue.GROUP_LOCATION_TYPE_HOME ) ).Id;
 
             // Record status: Active, Inactive, Pending
             int? statusActiveId =
-                DefinedValueCache.Read( new Guid( Rock.SystemGuid.DefinedValue.PERSON_RECORD_STATUS_ACTIVE ), lookupContext )
+                DefinedValueCache.Read( new Guid( Rock.SystemGuid.DefinedValue.PERSON_RECORD_STATUS_ACTIVE ), rockContext )
                                  .Id;
 
             // Record type: Business
             int? businessRecordTypeId =
-                DefinedValueCache.Read( new Guid( Rock.SystemGuid.DefinedValue.PERSON_RECORD_TYPE_BUSINESS ), lookupContext )
+                DefinedValueCache.Read( new Guid( Rock.SystemGuid.DefinedValue.PERSON_RECORD_TYPE_BUSINESS ), rockContext )
                                  .Id;
 
             // Group role: Adult
             _groupRoleId =
-                new GroupTypeRoleService( lookupContext ).Get(
+                new GroupTypeRoleService( rockContext ).Get(
                                                            new Guid(
                                                                Rock.SystemGuid.GroupRole.GROUPROLE_FAMILY_MEMBER_ADULT ) )
                                                        .Id;
@@ -59,7 +59,7 @@ namespace Excavator.CSV
             int familyGroupTypeId = GroupTypeCache.GetFamilyGroupType().Id;
             _recordStatusPendingId =
                 DefinedValueCache.Read( new Guid( Rock.SystemGuid.DefinedValue.PERSON_RECORD_STATUS_PENDING ),
-                                     lookupContext ).Id;
+                                     rockContext ).Id;
 
             int completed = 0;
             ReportProgress( 0, "Starting company import" );
@@ -81,7 +81,7 @@ namespace Excavator.CSV
                     };
 
 
-                    var businessName = row[COMPANY_HOUSEHOLD_NAME] as string;
+                    string businessName = row[COMPANY_HOUSEHOLD_NAME];
                     if ( businessName != null )
                     {
                         businessName = businessName.Replace( "&#39;", "'" );
@@ -117,14 +117,14 @@ namespace Excavator.CSV
 
                     var primaryAddress = locationService.Get( address1, address2, city, null, zip, null, verifyLocation: false );
 
-                    if ( primaryAddress != null & businessGroup != null )
+                    if ( primaryAddress != null )
                     {
                         var primaryLocation = new GroupLocation();
                         primaryLocation.LocationId = primaryAddress.Id;
                         primaryLocation.IsMailingLocation = true;
                         primaryLocation.IsMappedLocation = true;
                         primaryLocation.GroupLocationTypeValueId = homeLocationTypeId;
-                        newGroupLocations.Add( primaryLocation, businessGroup.ForeignKey );
+                        newGroupLocations.Add( businessGroup.ForeignKey, primaryLocation );
                     }
 
                     completed++;
@@ -134,17 +134,16 @@ namespace Excavator.CSV
                     }
                     else if ( completed % ReportingNumber < 1 )
                     {
-                        SaveCompanies( lookupContext, businessList, newGroupLocations );
+                        SaveCompanies( businessList, newGroupLocations );
                         ReportPartialProgress();
                         businessList.Clear();
-                        lookupContext = new RockContext();
                     }
                 }
             }
 
             if ( businessList.Any() )
             {
-                SaveCompanies( lookupContext, businessList, newGroupLocations );
+                SaveCompanies( businessList, newGroupLocations );
             }
 
             ReportProgress( 100, string.Format( "Finished company import: {0:N0} companies imported.", completed ) );
@@ -155,19 +154,20 @@ namespace Excavator.CSV
         /// Saves the companies.
         /// </summary>
         /// <param name="businessList">The business list.</param>
-        private void SaveCompanies(RockContext lookupContext, List<BusinessCarrier> businessList, Dictionary<GroupLocation, string> newGroupLocations )
+        private void SaveCompanies(List<BusinessCarrier> businessList, Dictionary<string, GroupLocation> newGroupLocations )
         {
+            var rockContext = new RockContext();
             var importedGroupContacts = new List<Group>();
-            lookupContext.WrapTransaction(() =>
+            rockContext.WrapTransaction(() =>
             {
-                lookupContext.Configuration.AutoDetectChangesEnabled = false;
+                rockContext.Configuration.AutoDetectChangesEnabled = false;
 
-                lookupContext.Groups.AddRange( businessList.Where(bc => bc.ContactFamily != null).Select( bc => bc.ContactFamily ) );
-                lookupContext.Groups.AddRange(businessList.Select(bc => bc.BusinessGroup));
-                lookupContext.SaveChanges(DisableAuditing);
+                rockContext.Groups.AddRange( businessList.Where(bc => bc.ContactFamily != null).Select( bc => bc.ContactFamily ) );
+                rockContext.Groups.AddRange(businessList.Select(bc => bc.BusinessGroup));
+                rockContext.SaveChanges(DisableAuditing);
 
-                var groupMemberService = new GroupMemberService( lookupContext );
-                var groupTypeRoleService = new GroupTypeRoleService( lookupContext );
+                var groupMemberService = new GroupMemberService( rockContext );
+                var groupTypeRoleService = new GroupTypeRoleService( rockContext );
                 int businessContactRole =
                     groupTypeRoleService.Get(
                                             new Guid(
@@ -179,38 +179,6 @@ namespace Excavator.CSV
                     importedGroupContacts.Add( businessCarrier.BusinessGroup );
                     foreach (var groupMember in businessCarrier.BusinessGroup.Members)
                     {
-                        // don't call LoadAttributes, it only rewrites existing cache objects
-                        // groupMember.Person.LoadAttributes( rockContext );
-
-                        foreach (var attributeCache in groupMember.Person.Attributes.Select(a => a.Value))
-                        {
-                            var existingValue =
-                                lookupContext.AttributeValues.FirstOrDefault(
-                                                 v =>
-                                                     v.Attribute.Key == attributeCache.Key &&
-                                                     v.EntityId == groupMember.Person.Id);
-                            var newAttributeValue = groupMember.Person.AttributeValues[attributeCache.Key];
-
-                            // set the new value and add it to the database
-                            if (existingValue == null)
-                            {
-                                existingValue =
-                                    new AttributeValue
-                                    {
-                                        AttributeId = newAttributeValue.AttributeId,
-                                        EntityId = groupMember.Person.Id,
-                                        Value = newAttributeValue.Value
-                                    };
-
-                                lookupContext.AttributeValues.Add(existingValue);
-                            }
-                            else
-                            {
-                                existingValue.Value = newAttributeValue.Value;
-                                lookupContext.Entry(existingValue).State = EntityState.Modified;
-                            }
-                        }
-
                         if (groupMember.Person.Aliases.All(a => a.AliasPersonId != groupMember.Person.Id))
                         {
                             groupMember.Person.Aliases.Add(new PersonAlias
@@ -227,35 +195,6 @@ namespace Excavator.CSV
                     {
                         foreach (var groupMember in businessCarrier.ContactFamily.Members)
                         {
-                            // don't call LoadAttributes, it only rewrites existing cache objects
-                            // groupMember.Person.LoadAttributes( rockContext );
-
-                            foreach (var attributeCache in groupMember.Person.Attributes.Select(a => a.Value))
-                            {
-                                var existingValue =
-                                    lookupContext.AttributeValues.FirstOrDefault(
-                                                     v =>
-                                                         v.Attribute.Key == attributeCache.Key &&
-                                                         v.EntityId == groupMember.Person.Id);
-                                var newAttributeValue = groupMember.Person.AttributeValues[attributeCache.Key];
-
-                                // set the new value and add it to the database
-                                if (existingValue == null)
-                                {
-                                    existingValue = new AttributeValue();
-                                    existingValue.AttributeId = newAttributeValue.AttributeId;
-                                    existingValue.EntityId = groupMember.Person.Id;
-                                    existingValue.Value = newAttributeValue.Value;
-
-                                    lookupContext.AttributeValues.Add(existingValue);
-                                }
-                                else
-                                {
-                                    existingValue.Value = newAttributeValue.Value;
-                                    lookupContext.Entry(existingValue).State = EntityState.Modified;
-                                }
-                            }
-
                             if (groupMember.Person.Aliases.All(a => a.AliasPersonId != groupMember.Person.Id))
                             {
                                 groupMember.Person.Aliases.Add(new PersonAlias
@@ -278,32 +217,35 @@ namespace Excavator.CSV
                         }
                     }
 
-                    lookupContext.ChangeTracker.DetectChanges();
-                    lookupContext.SaveChanges(DisableAuditing);
+                    rockContext.ChangeTracker.DetectChanges();
+                    rockContext.SaveChanges(DisableAuditing);
                 }
             });
 
-            if ( newGroupLocations.Any() )
-            {
-                // Set updated family id on locations
-                foreach ( var locationPair in newGroupLocations )
-                {
-                    var familyGroupId = importedGroupContacts.Where( g => g.ForeignKey == locationPair.Value ).Select( g => ( int? ) g.Id ).FirstOrDefault();
-                    if ( familyGroupId != null )
-                    {
-                        locationPair.Key.GroupId = ( int ) familyGroupId;
-                    }
-                }
 
-                // Save locations
-                lookupContext.WrapTransaction( () =>
-                {
-                    lookupContext.Configuration.AutoDetectChangesEnabled = false;
-                    lookupContext.GroupLocations.AddRange( newGroupLocations.Keys );
-                    lookupContext.ChangeTracker.DetectChanges();
-                    lookupContext.SaveChanges( DisableAuditing );
-                } );
-            }
+            // Now save locations
+//            if ( newGroupLocations.Any() )
+//            {
+//                // Set updated family id on locations
+//                foreach ( var locationPair in newGroupLocations )
+//                {
+//                    var familyGroupId = importedGroupContacts.Where( g => g.ForeignKey == locationPair.Key ).Select( g => ( int? ) g.Id ).FirstOrDefault();
+//                    if (familyGroupId.HasValue)
+//                    {
+//
+//                        locationPair.Value.GroupId = ( int ) familyGroupId;
+//                    }
+//                }
+//
+//                // Save locations
+//                rockContext.WrapTransaction( () =>
+//                {
+//                    rockContext.Configuration.AutoDetectChangesEnabled = false;
+//                    rockContext.GroupLocations.AddRange( newGroupLocations.Values );
+//                    rockContext.ChangeTracker.DetectChanges();
+//                    rockContext.SaveChanges( DisableAuditing );
+//                } );
+//            }
         }
 
         private Group CreateFamilyGroup( string rowFamilyName )
