@@ -365,22 +365,25 @@ namespace Excavator.F1
             var cache = EntityTypeCache.Read( f1AuthProvider );
             AuthProviderEntityTypeId = cache == null ? (int?)null : cache.Id;
 
+            int adultFamilyRoleId =
+                new GroupTypeRoleService(lookupContext).Get(Rock.SystemGuid.GroupRole.GROUPROLE_FAMILY_MEMBER_ADULT.AsGuid()).Id;
+
             var aliasIdList = new PersonAliasService( lookupContext ).Queryable().AsNoTracking()
                 .Select( pa => new
                 {
                     PersonAliasId = pa.Id,
                     PersonId = pa.PersonId,
-                    IndividualId = pa.ForeignId,
-                    FamilyRole = pa.Person.ReviewReasonNote
-                } ).ToList();
-            var householdIdList = attributeValueService.GetByAttributeId( householdAttribute.Id ).AsNoTracking()
-                .Select( av => new
-                {
-                    PersonId = (int)av.EntityId,
-                    HouseholdId = av.Value
+                    IndividualId = pa.Person.ForeignId
                 } ).ToList();
 
-            ImportedPeople = householdIdList.GroupJoin( aliasIdList,
+            int familyId = new GroupTypeService(lookupContext).Get(Rock.SystemGuid.GroupType.GROUPTYPE_FAMILY.AsGuid()).Id;
+            var houseHolds = new GroupService(lookupContext).Queryable().Where(g => g.GroupTypeId == familyId && g.ForeignId != null)
+                .SelectMany( g => g.Members)
+                .Select(gm => new { PersonId = gm.PersonId, HouseholdId = gm.Group.ForeignId, FamilyRole = gm.GroupRoleId } ).ToList();
+
+            int houseHoldMissingItemCount = houseHolds.Where(p => p.HouseholdId == null).Count();
+
+            ImportedPeople = houseHolds.GroupJoin( aliasIdList,
                 household => household.PersonId,
                 aliases => aliases.PersonId,
                 ( household, aliases ) => new PersonKeys
@@ -388,10 +391,12 @@ namespace Excavator.F1
                         PersonAliasId = aliases.Select( a => a.PersonAliasId ).FirstOrDefault(),
                         PersonId = household.PersonId,
                         IndividualId = aliases.Select( a => a.IndividualId ).FirstOrDefault(),
-                        HouseholdId = household.HouseholdId.AsType<int?>(),
-                        FamilyRoleId = aliases.Select( a => a.FamilyRole.ConvertToEnum<FamilyRole>( 0 ) ).FirstOrDefault()
-                    }
+                        HouseholdId = household.HouseholdId,
+                        FamilyRoleId = household.FamilyRole == adultFamilyRoleId ? FamilyRole.Adult : FamilyRole.Child
+                }
                 ).ToList();
+
+            int count = ImportedPeople.Where(p => p.IndividualId == null || p.HouseholdId == null).Count();
 
             ImportedBatches = new FinancialBatchService( lookupContext ).Queryable().AsNoTracking()
                 .Where( b => b.ForeignId != null )
@@ -414,7 +419,7 @@ namespace Excavator.F1
             else if ( householdId != null )
             {
                 return ImportedPeople.Where( p => p.HouseholdId == householdId && ( includeVisitors || p.FamilyRoleId != FamilyRole.Visitor ) )
-                    .OrderBy( p => (int)p.FamilyRoleId )
+                    .OrderByDescending( p => p.FamilyRoleId == FamilyRole.Adult )
                     .FirstOrDefault();
             }
             else
